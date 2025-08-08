@@ -75,4 +75,53 @@ public class DocumentStore {
     public List<Map<String, Object>> getHistory(String id) {
         return versioningManager.getHistory(id);
     }
+
+    /**
+     * Finds entities with vectors most similar to the entity with the given id.
+     * Similarity is measured using cosine similarity of the "vector" field.
+     */
+    public List<Entity> findSimilar(String id, int topN) {
+        Entity base = data.get(id);
+        if (base == null) return Collections.emptyList();
+        List<Double> baseVec = getVector(base);
+        if (baseVec == null) return Collections.emptyList();
+        List<Entity> others = new ArrayList<>();
+        for (Entity e : data.values()) {
+            if (!e.getId().equals(id) && getVector(e) != null) {
+                others.add(e);
+            }
+        }
+        others.sort((a, b) -> Double.compare(
+                similarity(baseVec, getVector(b)),
+                similarity(baseVec, getVector(a))));
+        if (topN < others.size()) {
+            return new ArrayList<>(others.subList(0, topN));
+        }
+        return others;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Double> getVector(Entity e) {
+        Object v = e.get("vector");
+        if (v instanceof List<?> l) {
+            List<Double> out = new ArrayList<>();
+            for (Object o : l) out.add(((Number) o).doubleValue());
+            return out;
+        }
+        return null;
+    }
+
+    private double similarity(List<Double> a, List<Double> b) {
+        if (b == null || a.size() != b.size()) return -1;
+        double dot = 0, normA = 0, normB = 0;
+        for (int i = 0; i < a.size(); i++) {
+            double x = a.get(i);
+            double y = b.get(i);
+            dot += x * y;
+            normA += x * x;
+            normB += y * y;
+        }
+        if (normA == 0 || normB == 0) return -1;
+        return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
 }
