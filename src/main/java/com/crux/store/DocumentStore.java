@@ -33,6 +33,19 @@ public class DocumentStore {
         versioningManager.recordUpdate(id, newFields);
     }
 
+    /**
+     * Performs a partial update merging the provided fields with
+     * the existing entity state.
+     */
+    public void updatePartial(String id, Map<String, Object> fields) {
+        Entity current = data.get(id);
+        Map<String, Object> merged = current == null
+                ? new HashMap<>()
+                : new HashMap<>(current.getFields());
+        merged.putAll(fields);
+        update(id, merged);
+    }
+
     public void delete(String id) {
         Entity entity = data.remove(id);
         if (entity != null) {
@@ -57,5 +70,9 @@ public class DocumentStore {
     public Entity getAt(String id, long timestamp) {
         Map<String, Object> fields = versioningManager.getAt(id, timestamp);
         return fields == null ? null : new Entity(id, fields);
+    }
+
+    public List<Map<String, Object>> getHistory(String id) {
+        return versioningManager.getHistory(id);
     }
 }
