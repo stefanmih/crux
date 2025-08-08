@@ -51,6 +51,8 @@ public class CommandLine {
             getField(line);
         } else if (line.startsWith("get some")) {
             getSome(line);
+        } else if (line.equalsIgnoreCase("help")) {
+            printHelp();
         } else if (line.startsWith("show history")) {
             String id = line.substring("show history".length()).trim();
             System.out.println(gson.toJson(store.getHistory(id)));
@@ -82,10 +84,19 @@ public class CommandLine {
     }
 
     private void updateEntities(String line) {
-        int whereIdx = line.indexOf("where") + 5;
-        int setIdx = line.indexOf(" set ", whereIdx);
+        String lower = line.toLowerCase(Locale.ROOT);
+        int whereIdx = lower.indexOf("where");
+        if (whereIdx == -1) throw new IllegalArgumentException("missing where clause");
+        whereIdx += 5;
+        int setIdx = lower.indexOf(" set", whereIdx);
+        if (setIdx == -1) throw new IllegalArgumentException("missing set clause");
         String filterStr = line.substring(whereIdx, setIdx).trim();
-        String json = line.substring(line.indexOf('{', setIdx), line.lastIndexOf('}') + 1);
+        int jsonStart = line.indexOf('{', setIdx);
+        int jsonEnd = line.lastIndexOf('}');
+        if (jsonStart == -1 || jsonEnd == -1 || jsonEnd < jsonStart) {
+            throw new IllegalArgumentException("missing update json");
+        }
+        String json = line.substring(jsonStart, jsonEnd + 1);
         QueryExpression q = parser.parse(filterStr);
         Map<String,Object> upd = gson.fromJson(json, Map.class);
         List<Entity> matches = store.query(q);
@@ -135,6 +146,19 @@ public class CommandLine {
             } else return null;
         }
         return current;
+    }
+
+    private void printHelp() {
+        System.out.println("Available commands:");
+        System.out.println(" add entity {json} [vector [n1 n2 ...]]");
+        System.out.println(" delete entity ID");
+        System.out.println(" update entities where <filter> set {json}");
+        System.out.println(" get entities using filter <filter>");
+        System.out.println(" get field <path> from <id>");
+        System.out.println(" get some [N]");
+        System.out.println(" show history <id>");
+        System.out.println(" help");
+        System.out.println(" exit");
     }
 }
 
