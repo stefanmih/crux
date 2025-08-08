@@ -1,6 +1,6 @@
-package rs.clustiqdb.version;
+package com.crux.version;
 
-import rs.clustiqdb.store.Entity;
+import com.crux.store.Entity;
 
 import java.util.*;
 
@@ -8,14 +8,12 @@ import java.util.*;
  * Maintains simple time-travel history for entities.
  */
 public class VersioningManager {
-    private static class Version {
-        final long timestamp;
-        final Map<String, Object> fields;
-        Version(long timestamp, Map<String, Object> fields) {
-            this.timestamp = timestamp;
-            this.fields = new HashMap<>(fields);
+    private record Version(long timestamp, Map<String, Object> fields) {
+            private Version(long timestamp, Map<String, Object> fields) {
+                this.timestamp = timestamp;
+                this.fields = new HashMap<>(fields);
+            }
         }
-    }
 
     private final Map<String, List<Version>> history = new HashMap<>();
 

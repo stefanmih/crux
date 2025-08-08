@@ -1,8 +1,8 @@
-package rs.clustiqdb.store;
+package com.crux.store;
 
-import rs.clustiqdb.index.IndexManager;
-import rs.clustiqdb.query.QueryExpression;
-import rs.clustiqdb.version.VersioningManager;
+import com.crux.index.IndexManager;
+import com.crux.query.QueryExpression;
+import com.crux.version.VersioningManager;
 
 import java.util.*;
 import java.util.stream.Collectors;

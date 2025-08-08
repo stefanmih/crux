@@ -1,4 +1,4 @@
-package rs.clustiqdb.pipeline;
+package com.crux.pipeline;
 
 import java.util.*;
 import java.util.function.*;

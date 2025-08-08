@@ -1,7 +1,7 @@
-package rs.clustiqdb.query;
+package com.crux.query;
 
-import rs.clustiqdb.index.IndexManager;
-import rs.clustiqdb.store.DocumentStore;
+import com.crux.index.IndexManager;
+import com.crux.store.DocumentStore;
 
 import java.util.*;
 

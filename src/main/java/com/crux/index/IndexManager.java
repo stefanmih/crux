@@ -1,6 +1,6 @@
-package rs.clustiqdb.index;
+package com.crux.index;
 
-import rs.clustiqdb.store.Entity;
+import com.crux.store.Entity;
 
 import java.util.*;
 

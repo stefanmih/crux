@@ -1,10 +1,10 @@
-package rs.clustiqdb;
+package com.crux;
 
 import org.junit.jupiter.api.Test;
-import rs.clustiqdb.store.DocumentStore;
-import rs.clustiqdb.store.Entity;
-import rs.clustiqdb.query.QueryExpression;
-import rs.clustiqdb.pipeline.Pipeline;
+import com.crux.store.DocumentStore;
+import com.crux.store.Entity;
+import com.crux.query.QueryExpression;
+import com.crux.pipeline.Pipeline;
 
 import java.util.*;
 

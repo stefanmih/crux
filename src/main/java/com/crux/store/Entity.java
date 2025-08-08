@@ -1,4 +1,4 @@
-package rs.clustiqdb.store;
+package com.crux.store;
 
 import java.util.Map;
 
