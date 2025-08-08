@@ -47,4 +47,13 @@ public class VersioningManager {
         }
         return result == null ? null : new HashMap<>(result.fields);
     }
+
+    public List<Map<String, Object>> getHistory(String id) {
+        List<Version> versions = history.getOrDefault(id, Collections.emptyList());
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Version v : versions) {
+            out.add(new HashMap<>(v.fields));
+        }
+        return out;
+    }
 }
