@@ -20,7 +20,7 @@ public class FilterParser {
 
         boolean hasNext() { skipWs(); return pos < s.length(); }
 
-        String peek() { int p = pos; return next(); }
+        String peek() { int p = pos; String t = next(); pos = p; return t; }
 
         String next() {
             skipWs();
@@ -71,6 +71,12 @@ public class FilterParser {
     public QueryExpression parse(String input) {
         Lexer lexer = new Lexer(input);
         return parseOr(lexer);
+    }
+
+    /** Parses a standalone value expression. */
+    public ValueExpression parseValueExpression(String input) {
+        Lexer lexer = new Lexer(input);
+        return parseValueExpr(lexer);
     }
 
     private QueryExpression parseOr(Lexer l) {
