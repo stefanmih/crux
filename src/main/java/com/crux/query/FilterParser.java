@@ -3,6 +3,8 @@ package com.crux.query;
 import com.crux.store.Entity;
 
 import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Simple recursive descent parser for the filter grammar used by
@@ -11,6 +13,7 @@ import java.util.*;
  * evaluation AST.
  */
 public class FilterParser {
+    private static final Logger LOGGER = Logger.getLogger(FilterParser.class.getName());
 
     private static class Lexer {
         private final String s;
@@ -69,14 +72,24 @@ public class FilterParser {
     }
 
     public QueryExpression parse(String input) {
-        Lexer lexer = new Lexer(input);
-        return parseOr(lexer);
+        try {
+            Lexer lexer = new Lexer(input);
+            return parseOr(lexer);
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.SEVERE, "Failed to parse filter: " + input, e);
+            throw e;
+        }
     }
 
     /** Parses a standalone value expression. */
     public ValueExpression parseValueExpression(String input) {
-        Lexer lexer = new Lexer(input);
-        return parseValueExpr(lexer);
+        try {
+            Lexer lexer = new Lexer(input);
+            return parseValueExpr(lexer);
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.SEVERE, "Failed to parse value expression: " + input, e);
+            throw e;
+        }
     }
 
     private QueryExpression parseOr(Lexer l) {
