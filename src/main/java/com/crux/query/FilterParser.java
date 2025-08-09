@@ -282,8 +282,12 @@ public class FilterParser {
         if ("true".equalsIgnoreCase(t) || "false".equalsIgnoreCase(t)) {
             return ValueExpression.literal(Boolean.parseBoolean(t));
         }
-        // number
-        return ValueExpression.literal(Double.parseDouble(t));
+        // attempt numeric parsing, otherwise treat as string
+        try {
+            return ValueExpression.literal(Double.parseDouble(t));
+        } catch (NumberFormatException ex) {
+            return ValueExpression.literal(t);
+        }
     }
 
     private Object getFieldValue(Entity e, String path) {
