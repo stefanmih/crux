@@ -42,7 +42,7 @@ Once started you can interact with the store using the commands below. Type
 Filters use the syntax `<field> <operator> <value expression>`. Value
 expressions may contain numbers, strings, booleans or references to other
 fields using the `&fieldName` notation. The supported comparison operators are
-`==`, `!=`, `>`, `>=`, `<` and `<=`.
+`==`, `!=`, `>`, `>=`, `<`, `<=` and `=` (alias for equality).
 
 Examples:
 

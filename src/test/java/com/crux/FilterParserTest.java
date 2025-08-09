@@ -40,7 +40,19 @@ public class FilterParserTest {
         store.insert(new Entity("1", Map.of("name", "alice")));
         store.insert(new Entity("2", Map.of("name", "bob")));
         FilterParser parser = new FilterParser();
-        var expr = parser.parse("name == alice");
+        var expr = parser.parse("name == \"alice\"");
+        var res = store.query(expr);
+        assertEquals(1, res.size());
+        assertEquals("1", res.get(0).getId());
+    }
+
+    @Test
+    public void testComplexExpression() {
+        DocumentStore store = new DocumentStore();
+        store.insert(new Entity("1", Map.of("feature", Map.of("tag", 4), "id", 150)));
+        store.insert(new Entity("2", Map.of("feature", Map.of("tag", 5), "id", 187)));
+        FilterParser parser = new FilterParser();
+        var expr = parser.parse("id = (25 * &feature.tag/2) * 3");
         var res = store.query(expr);
         assertEquals(1, res.size());
         assertEquals("1", res.get(0).getId());
