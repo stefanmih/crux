@@ -189,6 +189,7 @@ public class FilterParser {
     }
 
     private boolean compare(Object l, Object r, String op) {
+        if ("=".equals(op)) op = "==";
         if (l == null || r == null) {
             return "==".equals(op) ? Objects.equals(l,r) : "!=".equals(op) && !Objects.equals(l,r);
         }
