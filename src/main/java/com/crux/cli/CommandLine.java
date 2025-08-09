@@ -20,11 +20,11 @@ import java.util.logging.Logger;
 public class CommandLine {
     private static final Logger LOGGER = Logger.getLogger(CommandLine.class.getName());
 
-    private final DocumentStore store = new DocumentStore();
-    private final FilterParser parser = new FilterParser();
-    private final Gson gson = new Gson();
-    private final Map<String, Set<String>> sets = new HashMap<>();
-    private Map<String, ValueExpression> transformFunction = new HashMap<>();
+    final DocumentStore store = new DocumentStore();
+    final FilterParser parser = new FilterParser();
+    final Gson gson = new Gson();
+    final Map<String, Set<String>> sets = new HashMap<>();
+    Map<String, ValueExpression> transformFunction = new HashMap<>();
 
     public CommandLine() {
         sets.put("all", new HashSet<>());
@@ -45,45 +45,12 @@ public class CommandLine {
         }
     }
 
-    private void handle(String line) {
-        if (line.startsWith("add entity")) {
-            addEntity(line.substring("add entity".length()).trim());
-        } else if (line.startsWith("delete entity")) {
-            String id = line.substring("delete entity".length()).trim();
-            store.delete(id);
-            for (Set<String> s : sets.values()) s.remove(id);
-            System.out.println("deleted " + id);
-        } else if (line.startsWith("update entities where")) {
-            updateEntities(line);
-        } else if (line.startsWith("get entities using filter")) {
-            String expr = line.substring("get entities using filter".length()).trim();
-            QueryExpression q = parser.parse(expr);
-            List<Entity> res = store.query(q);
-            System.out.println(gson.toJson(res.stream().map(Entity::getFields).collect(Collectors.toList())));
-        } else if (line.startsWith("get field")) {
-            getField(line);
-        } else if (line.startsWith("get some")) {
-            getSome(line);
-        } else if (line.startsWith("generate")) {
-            generate(line);
-        } else if (line.startsWith("find similar")) {
-            findSimilar(line);
-        } else if (line.startsWith("create transform function")) {
-            createTransformFunction(line);
-        } else if (line.startsWith("apply transform function")) {
-            applyTransformFunction(line);
-        } else if (line.equalsIgnoreCase("help")) {
-            printHelp();
-        } else if (line.startsWith("show history")) {
-            String id = line.substring("show history".length()).trim();
-            System.out.println(gson.toJson(store.getHistory(id)));
-        } else {
-            LOGGER.log(Level.WARNING, "Unknown command: {0}", line);
-            System.out.println("unknown command");
-        }
+    void handle(String line) {
+        CommandParser.Command cmd = new CommandParser().parse(line);
+        cmd.execute(this);
     }
 
-    private void addEntity(String rest) {
+    void addEntity(String rest) {
         try {
             int jsonStart = rest.indexOf('{');
             int jsonEnd = rest.lastIndexOf('}');
@@ -111,7 +78,7 @@ public class CommandLine {
         }
     }
 
-    private void updateEntities(String line) {
+    void updateEntities(String line) {
         try {
             String lower = line.toLowerCase(Locale.ROOT);
             int whereIdx = lower.indexOf("where");
@@ -177,7 +144,7 @@ public class CommandLine {
         }
     }
 
-    private void generate(String line) {
+    void generate(String line) {
         try {
             int n = Integer.parseInt(line.substring("generate".length()).trim());
             Random rnd = new Random();
@@ -199,7 +166,7 @@ public class CommandLine {
         }
     }
 
-    private void findSimilar(String line) {
+    void findSimilar(String line) {
         try {
             String rest = line.substring("find similar".length()).trim();
             String[] parts = rest.split("\\s+");
@@ -213,7 +180,7 @@ public class CommandLine {
         }
     }
 
-    private void createTransformFunction(String line) {
+    void createTransformFunction(String line) {
         try {
             int lb = line.indexOf('{');
             int rb = line.lastIndexOf('}');
@@ -237,7 +204,7 @@ public class CommandLine {
         }
     }
 
-    private void applyTransformFunction(String line) {
+    void applyTransformFunction(String line) {
         try {
             String lower = line.toLowerCase(Locale.ROOT);
             int fromIdx = lower.indexOf("from set");
@@ -272,7 +239,7 @@ public class CommandLine {
         }
     }
 
-    private Object getFieldValue(Entity e, String path) {
+    Object getFieldValue(Entity e, String path) {
         String[] parts = path.split("\\.");
         Object current = e.getFields();
         for (String p : parts) {
@@ -295,7 +262,7 @@ public class CommandLine {
         current.put(parts[parts.length-1], value);
     }
 
-    private void printHelp() {
+    void printHelp() {
         System.out.println("Available commands:");
         System.out.println(" add entity {json} [vector [n1 n2 ...]]");
         System.out.println(" delete entity ID");
