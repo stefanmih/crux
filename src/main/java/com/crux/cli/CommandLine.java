@@ -27,7 +27,7 @@ public class CommandLine {
     Map<String, ValueExpression> transformFunction = new HashMap<>();
 
     public CommandLine() {
-        sets.put("all", new HashSet<>());
+        sets.put("all", new HashSet<>(store.getAllIds()));
     }
 
     public void run() {
@@ -239,6 +239,16 @@ public class CommandLine {
         }
     }
 
+    void persistSnapshot() {
+        try {
+            store.saveSnapshot();
+            System.out.println("snapshot saved");
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Failed to persist snapshot", e);
+            throw new RuntimeException(e);
+        }
+    }
+
     Object getFieldValue(Entity e, String path) {
         String[] parts = path.split("\\.");
         Object current = e.getFields();
@@ -275,6 +285,7 @@ public class CommandLine {
         System.out.println(" show history <id>");
         System.out.println(" create transform function { expr -> field }");
         System.out.println(" apply transform function from set <src> to <dest>");
+        System.out.println(" persist snapshot");
         System.out.println(" help");
         System.out.println(" exit");
     }

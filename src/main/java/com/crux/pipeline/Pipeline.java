@@ -35,6 +35,14 @@ public class Pipeline<T> {
         return stream.reduce(identity, accumulator, combiner);
     }
 
+    public double sum(ToDoubleFunction<T> mapper) {
+        return stream.mapToDouble(mapper).sum();
+    }
+
+    public double average(ToDoubleFunction<T> mapper) {
+        return stream.mapToDouble(mapper).average().orElse(0d);
+    }
+
     public List<T> toList() {
         return stream.collect(Collectors.toList());
     }

@@ -1,17 +1,21 @@
 package com.crux.store;
 
 import com.crux.index.IndexManager;
+import com.crux.persistence.PersistenceManager;
 import com.crux.query.QueryExpression;
 import com.crux.version.VersioningManager;
 
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
- * In-memory store for schemaless entities with automatic indexing
- * and simple versioning support.
+ * In-memory store for schemaless entities with automatic indexing,
+ * persistence and time-travel support.
  */
 public class DocumentStore {
     private static final Logger LOGGER = Logger.getLogger(DocumentStore.class.getName());
@@ -19,6 +23,22 @@ public class DocumentStore {
     private final Map<String, Entity> data = new HashMap<>();
     private final IndexManager indexManager = new IndexManager();
     private final VersioningManager versioningManager = new VersioningManager();
+    private final PersistenceManager persistenceManager;
+
+    public DocumentStore() {
+        this(Paths.get("data"));
+    }
+
+    public DocumentStore(Path baseDirectory) {
+        this.persistenceManager = new PersistenceManager(baseDirectory);
+        PersistenceManager.LoadedState state = persistenceManager.load();
+        for (var entry : state.data().entrySet()) {
+            Entity entity = new Entity(entry.getKey(), entry.getValue());
+            data.put(entity.getId(), entity);
+            indexManager.index(entity);
+        }
+        versioningManager.bootstrap(state.history());
+    }
 
     public void insert(Entity entity) {
         if (entity == null) {
@@ -29,6 +49,7 @@ public class DocumentStore {
             data.put(entity.getId(), entity);
             indexManager.index(entity);
             versioningManager.recordInsert(entity);
+            persistenceManager.appendInsert(entity);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to insert entity " + entity.getId(), e);
             throw new RuntimeException(e);
@@ -45,10 +66,12 @@ public class DocumentStore {
             if (old != null) {
                 indexManager.remove(old);
             }
-            Entity entity = new Entity(id, newFields);
+            Map<String, Object> copy = deepCopy(newFields);
+            Entity entity = new Entity(id, copy);
             data.put(id, entity);
             indexManager.index(entity);
-            versioningManager.recordUpdate(id, newFields);
+            versioningManager.recordUpdate(id, copy);
+            persistenceManager.appendUpdate(id, copy);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to update entity " + id, e);
             throw new RuntimeException(e);
@@ -68,7 +91,7 @@ public class DocumentStore {
             Entity current = data.get(id);
             Map<String, Object> merged = current == null
                     ? new HashMap<>()
-                    : new HashMap<>(current.getFields());
+                    : deepCopy(current.getFields());
             merged.putAll(fields);
             update(id, merged);
         } catch (Exception e) {
@@ -87,6 +110,7 @@ public class DocumentStore {
             if (entity != null) {
                 indexManager.remove(entity);
                 versioningManager.recordDelete(id);
+                persistenceManager.appendDelete(id);
             }
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to delete entity " + id, e);
@@ -109,7 +133,7 @@ public class DocumentStore {
     }
 
     public Collection<Entity> findAll() {
-        return data.values();
+        return Collections.unmodifiableCollection(data.values());
     }
 
     public Entity get(String id) {
@@ -147,6 +171,26 @@ public class DocumentStore {
         }
     }
 
+    public List<Entity> snapshotAt(long timestamp) {
+        Map<String, Map<String, Object>> snapshot = versioningManager.snapshotAt(timestamp);
+        List<Entity> result = new ArrayList<>();
+        snapshot.forEach((key, value) -> result.add(new Entity(key, value)));
+        return result;
+    }
+
+    public void saveSnapshot() {
+        try {
+            persistenceManager.saveSnapshot(data.values());
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "Failed to save snapshot", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Set<String> getAllIds() {
+        return new HashSet<>(data.keySet());
+    }
+
     /**
      * Finds entities with vectors most similar to the entity with the given id.
      * Similarity is measured using cosine similarity of the "vector" field.
@@ -178,6 +222,32 @@ public class DocumentStore {
             LOGGER.log(Level.SEVERE, "Failed to find similar entities for id " + id, e);
             throw new RuntimeException(e);
         }
+    }
+
+    private Map<String, Object> deepCopy(Map<String, Object> source) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        for (var entry : source.entrySet()) {
+            copy.put(entry.getKey(), deepCopyValue(entry.getValue()));
+        }
+        return copy;
+    }
+
+    private Object deepCopyValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> nested = new LinkedHashMap<>();
+            for (var entry : map.entrySet()) {
+                nested.put(String.valueOf(entry.getKey()), deepCopyValue(entry.getValue()));
+            }
+            return nested;
+        }
+        if (value instanceof List<?> list) {
+            List<Object> nested = new ArrayList<>();
+            for (Object o : list) {
+                nested.add(deepCopyValue(o));
+            }
+            return nested;
+        }
+        return value;
     }
 
     @SuppressWarnings("unchecked")
@@ -218,3 +288,4 @@ public class DocumentStore {
         }
     }
 }
+
