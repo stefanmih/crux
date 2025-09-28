@@ -80,6 +80,14 @@ public class CommandParserTest {
     }
 
     @Test
+    public void testAddEntityWithUnquotedStringValueShowsHelpfulError(@TempDir Path tempDir) throws Exception {
+        CliHarness harness = createHarness(tempDir);
+        CommandParser.Command command = parse("add entity {\"name\": John Doe}");
+        CliException ex = assertThrows(CliException.class, () -> command.execute(harness.cli));
+        assertTrue(ex.getMessage().contains("double quotes"));
+    }
+
+    @Test
     public void testDeleteEntityRemovesFromStoreAndSets(@TempDir Path tempDir) throws Exception {
         CliHarness harness = createHarness(tempDir);
         insertEntity(harness, "1", Map.of("name", "Alice"));
