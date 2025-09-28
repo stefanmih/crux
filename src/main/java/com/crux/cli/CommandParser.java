@@ -93,6 +93,7 @@ public class CommandParser {
             case "create" -> parseCreate(t);
             case "apply" -> parseApply(t);
             case "show" -> parseShow(t);
+            case "persist" -> parsePersist(t);
             case "help" -> cli -> cli.printHelp();
             default -> throw new RuntimeException("unknown command");
         };
@@ -240,5 +241,13 @@ public class CommandParser {
             return cli -> System.out.println(cli.gson.toJson(cli.store.getHistory(id)));
         }
         throw new RuntimeException("unknown show command");
+    }
+
+    private Command parsePersist(Tokenizer t) {
+        String second = t.next();
+        if ("snapshot".equalsIgnoreCase(second)) {
+            return CommandLine::persistSnapshot;
+        }
+        throw new RuntimeException("unknown persist command");
     }
 }

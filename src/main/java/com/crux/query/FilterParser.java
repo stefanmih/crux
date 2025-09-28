@@ -5,6 +5,7 @@ import com.crux.store.Entity;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 /**
  * Simple recursive descent parser for the filter grammar used by
@@ -96,7 +97,7 @@ public class FilterParser {
         QueryExpression left = parseAnd(l);
         while (l.hasNext()) {
             String token = l.peek();
-            if ("or".equals(token)) { l.next(); QueryExpression right = parseAnd(l); left = QueryExpression.or(left, right); }
+            if ("or".equalsIgnoreCase(token)) { l.next(); QueryExpression right = parseAnd(l); left = QueryExpression.or(left, right); }
             else break;
         }
         return left;
@@ -106,7 +107,7 @@ public class FilterParser {
         QueryExpression left = parseNot(l);
         while (l.hasNext()) {
             String token = l.peek();
-            if ("and".equals(token)) { l.next(); QueryExpression right = parseNot(l); left = QueryExpression.and(left, right); }
+            if ("and".equalsIgnoreCase(token)) { l.next(); QueryExpression right = parseNot(l); left = QueryExpression.and(left, right); }
             else break;
         }
         return left;
@@ -114,23 +115,12 @@ public class FilterParser {
 
     private QueryExpression parseNot(Lexer l) {
         String token = l.peek();
-        if ("not".equals(token)) {
+        if ("not".equalsIgnoreCase(token)) {
             l.next();
             QueryExpression expr = parsePrimary(l);
-            return entityNot(expr);
+            return QueryExpression.not(expr);
         }
         return parsePrimary(l);
-    }
-
-    private QueryExpression entityNot(QueryExpression expr) {
-        return (indexes, store) -> {
-            Set<String> all = new HashSet<>();
-            for (Entity e : store.findAll()) {
-                all.add(e.getId());
-            }
-            all.removeAll(expr.evaluate(indexes, store));
-            return all;
-        };
     }
 
     private QueryExpression parsePrimary(Lexer l) {
@@ -170,60 +160,154 @@ public class FilterParser {
     private QueryExpression parseComparison(Lexer l) {
         String field = l.next();
         String op = l.next();
+        if (op == null) {
+            throw new RuntimeException("missing operator");
+        }
         ValueExpression value = parseValueExpr(l);
         return comparisonExpression(field, op, value);
     }
 
     private QueryExpression comparisonExpression(String field, String op, ValueExpression value) {
-        return (indexes, store) -> {
-            Set<String> out = new HashSet<>();
-            for (Entity e : store.findAll()) {
-                Object left = getFieldValue(e, field);
-                Object right = value.eval(e);
-                if (compare(left, right, op)) {
-                    out.add(e.getId());
+        if ("contains".equalsIgnoreCase(op)) {
+            if (value.isLiteral()) {
+                Object literal = value.literalValue();
+                if (literal != null) {
+                    return QueryExpression.contains(field, literal.toString());
                 }
             }
-            return out;
+            return QueryExpression.fromPredicate(e -> {
+                Object left = getFieldValue(e, field);
+                Object right = value.eval(e);
+                if (!(left instanceof String) || right == null) {
+                    return false;
+                }
+                return ((String) left).toLowerCase(Locale.ROOT)
+                        .contains(right.toString().toLowerCase(Locale.ROOT));
+            });
+        }
+        if ("like".equalsIgnoreCase(op)) {
+            if (value.isLiteral()) {
+                Object literal = value.literalValue();
+                if (literal != null) {
+                    return QueryExpression.like(field, literal.toString());
+                }
+            }
+            return QueryExpression.fromPredicate(e -> {
+                Object left = getFieldValue(e, field);
+                Object right = value.eval(e);
+                if (!(left instanceof String) || right == null) {
+                    return false;
+                }
+                return likeMatches(((String) left).toLowerCase(Locale.ROOT),
+                        right.toString().toLowerCase(Locale.ROOT));
+            });
+        }
+        String normalized = normalizeOperator(op);
+        if (value.isLiteral()) {
+            Object literal = value.literalValue();
+            if (literal instanceof Comparable<?> comparable) {
+                Optional<QueryExpression.Operator> operator = QueryExpression.Operator.fromSymbol(normalized);
+                if (operator.isPresent()) {
+                    return QueryExpression.field(field, operator.get(), (Comparable) comparable);
+                }
+            }
+        }
+        return QueryExpression.fromPredicate(e -> {
+            Object left = getFieldValue(e, field);
+            Object right = value.eval(e);
+            return compare(left, right, normalized);
+        });
+    }
+
+    private String normalizeOperator(String op) {
+        if (op == null) return "==";
+        return switch (op) {
+            case "=" -> "==";
+            case "==", "!=", ">", ">=", "<", "<=" -> op;
+            default -> op;
         };
     }
 
     private boolean compare(Object l, Object r, String op) {
-        if ("=".equals(op)) op = "==";
+        op = normalizeOperator(op);
         if (l == null || r == null) {
-            return "==".equals(op) ? Objects.equals(l,r) : "!=".equals(op) && !Objects.equals(l,r);
+            return switch (op) {
+                case "==" -> Objects.equals(l, r);
+                case "!=" -> !Objects.equals(l, r);
+                default -> false;
+            };
         }
         if (l instanceof Number || r instanceof Number) {
             double dl = ((Number) convertNumber(l)).doubleValue();
             double dr = ((Number) convertNumber(r)).doubleValue();
             return switch (op) {
-                case "==" -> dl==dr;
-                case "!=" -> dl!=dr;
-                case ">" -> dl>dr;
-                case ">=" -> dl>=dr;
-                case "<" -> dl<dr;
-                case "<=" -> dl<=dr;
+                case "==" -> dl == dr;
+                case "!=" -> dl != dr;
+                case ">" -> dl > dr;
+                case ">=" -> dl >= dr;
+                case "<" -> dl < dr;
+                case "<=" -> dl <= dr;
                 default -> false;
             };
         }
         if (l instanceof Comparable c1 && r instanceof Comparable c2) {
             int cmp = c1.compareTo(c2);
             return switch (op) {
-                case "==" -> cmp==0;
-                case "!=" -> cmp!=0;
-                case ">" -> cmp>0;
-                case ">=" -> cmp>=0;
-                case "<" -> cmp<0;
-                case "<=" -> cmp<=0;
+                case "==" -> cmp == 0;
+                case "!=" -> cmp != 0;
+                case ">" -> cmp > 0;
+                case ">=" -> cmp >= 0;
+                case "<" -> cmp < 0;
+                case "<=" -> cmp <= 0;
                 default -> false;
             };
         }
-        return false;
+        return switch (op) {
+            case "==" -> Objects.equals(l, r);
+            case "!=" -> !Objects.equals(l, r);
+            default -> false;
+        };
     }
 
-    private Number convertNumber(Object o) {
+    private static Number convertNumber(Object o) {
         if (o instanceof Number n) return n;
         return Double.parseDouble(o.toString());
+    }
+
+    private boolean likeMatches(String text, String pattern) {
+        if (text == null || pattern == null) {
+            return false;
+        }
+        Pattern regex = Pattern.compile(toLikeRegex(pattern));
+        return regex.matcher(text).matches();
+    }
+
+    private String toLikeRegex(String pattern) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('^');
+        for (int i = 0; i < pattern.length(); i++) {
+            char c = pattern.charAt(i);
+            switch (c) {
+                case '%':
+                    sb.append(".*");
+                    break;
+                case '_':
+                    sb.append('.');
+                    break;
+                case '\\':
+                    if (i + 1 < pattern.length()) {
+                        sb.append(Pattern.quote(String.valueOf(pattern.charAt(++i))));
+                    }
+                    break;
+                default:
+                    if (".[]{}()*+-?^$|".indexOf(c) >= 0) {
+                        sb.append('\\');
+                    }
+                    sb.append(c);
+            }
+        }
+        sb.append('$');
+        return sb.toString();
     }
 
     private ValueExpression parseValueExpr(Lexer l) {
@@ -291,7 +375,7 @@ public class FilterParser {
         }
     }
 
-    private Object getFieldValue(Entity e, String path) {
+    private static Object getFieldValue(Entity e, String path) {
         String[] parts = path.split("\\.");
         Object current = e.getFields();
         for (String p : parts) {
@@ -309,30 +393,85 @@ public class FilterParser {
     public interface ValueExpression {
         Object eval(Entity entity);
 
-        static ValueExpression literal(Object v) { return e -> v; }
+        default boolean isLiteral() {
+            return this instanceof LiteralValue;
+        }
 
-        static ValueExpression field(String f) { return e -> new FilterParser().getFieldValue(e, f); }
+        default Object literalValue() {
+            return this instanceof LiteralValue literal ? literal.value : null;
+        }
+
+        static ValueExpression literal(Object v) {
+            return new LiteralValue(v);
+        }
+
+        static ValueExpression field(String f) {
+            return new FieldValue(f);
+        }
 
         static ValueExpression binary(ValueExpression l, String op, ValueExpression r) {
-            return e -> {
-                Object lv = l.eval(e);
-                Object rv = r.eval(e);
-                if (lv instanceof Number || rv instanceof Number) {
-                    double a = ((Number)new FilterParser().convertNumber(lv)).doubleValue();
-                    double b = ((Number)new FilterParser().convertNumber(rv)).doubleValue();
-                    return switch (op) {
-                        case "+" -> a + b;
-                        case "-" -> a - b;
-                        case "*" -> a * b;
-                        case "/" -> a / b;
-                        default -> 0;
-                    };
-                }
-                if ("+".equals(op)) {
-                    return String.valueOf(lv) + rv;
-                }
-                return null;
-            };
+            return new BinaryValue(l, op, r);
+        }
+    }
+
+    private static final class LiteralValue implements ValueExpression {
+        private final Object value;
+
+        private LiteralValue(Object value) {
+            this.value = value;
+        }
+
+        @Override
+        public Object eval(Entity entity) {
+            return value;
+        }
+    }
+
+    private static final class FieldValue implements ValueExpression {
+        private final String path;
+
+        private FieldValue(String path) {
+            this.path = path;
+        }
+
+        @Override
+        public Object eval(Entity entity) {
+            return FilterParser.getFieldValue(entity, path);
+        }
+    }
+
+    private static final class BinaryValue implements ValueExpression {
+        private final ValueExpression left;
+        private final String op;
+        private final ValueExpression right;
+
+        private BinaryValue(ValueExpression left, String op, ValueExpression right) {
+            this.left = left;
+            this.op = op;
+            this.right = right;
+        }
+
+        @Override
+        public Object eval(Entity entity) {
+            Object lv = left.eval(entity);
+            Object rv = right.eval(entity);
+            if (lv instanceof Number || rv instanceof Number) {
+                if (lv == null) lv = 0;
+                if (rv == null) rv = 0;
+                double a = ((Number) FilterParser.convertNumber(lv)).doubleValue();
+                double b = ((Number) FilterParser.convertNumber(rv)).doubleValue();
+                return switch (op) {
+                    case "+" -> a + b;
+                    case "-" -> a - b;
+                    case "*" -> a * b;
+                    case "/" -> a / b;
+                    default -> 0d;
+                };
+            }
+            if ("+".equals(op)) {
+                return String.valueOf(lv) + rv;
+            }
+            return null;
         }
     }
 }
