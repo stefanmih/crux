@@ -6,6 +6,7 @@ import com.crux.query.QueryExpression;
 import com.crux.store.DocumentStore;
 import com.crux.store.Entity;
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 
 import java.util.*;
 import java.util.logging.Level;
@@ -159,10 +160,7 @@ public class CommandLine {
                 throw new CliException("expected JSON body: add entity {\"id\":\"123\"}");
             }
             String json = rest.substring(jsonStart, jsonEnd + 1);
-            Map<String,Object> map = gson.fromJson(json, Map.class);
-            if (map == null) {
-                map = new HashMap<>();
-            }
+            Map<String,Object> map = parseJsonDocument(json, "entity body", true);
             String after = rest.substring(jsonEnd + 1).trim();
             if (after.startsWith("vector")) {
                 int lb = after.indexOf('[');
@@ -214,10 +212,7 @@ public class CommandLine {
             }
             String json = line.substring(jsonStart, jsonEnd + 1);
             QueryExpression q = parser.parse(filterStr);
-            Map<String,Object> upd = gson.fromJson(json, Map.class);
-            if (upd == null) {
-                throw new CliException("update JSON cannot be empty");
-            }
+            Map<String,Object> upd = parseJsonDocument(json, "update body", false);
             List<Entity> matches = store.query(q);
             for (Entity e : matches) {
                 store.updatePartial(e.getId(), upd);
@@ -457,6 +452,21 @@ public class CommandLine {
             current = (Map<String,Object>) current.computeIfAbsent(parts[i], k -> new HashMap<>());
         }
         current.put(parts[parts.length-1], value);
+    }
+
+    private Map<String,Object> parseJsonDocument(String json, String context, boolean allowEmpty) {
+        try {
+            Map<String,Object> map = gson.fromJson(json, Map.class);
+            if (map == null) {
+                if (allowEmpty) {
+                    return new HashMap<>();
+                }
+                throw new CliException(context + " cannot be empty");
+            }
+            return map;
+        } catch (JsonSyntaxException ex) {
+            throw new CliException(context + " contains invalid JSON. Wrap string values in double quotes.", ex);
+        }
     }
 
     void printHelp() {
