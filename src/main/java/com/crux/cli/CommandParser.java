@@ -6,7 +6,6 @@ import com.crux.store.Entity;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -81,7 +80,7 @@ public class CommandParser {
     /** Parses a command line into an executable command. */
     Command parse(String line) {
         Tokenizer t = new Tokenizer(line);
-        if (!t.hasNext()) throw new RuntimeException("empty command");
+        if (!t.hasNext()) throw new CliException("empty command. Type 'help' to see the list of commands.");
         String first = t.next().toLowerCase(Locale.ROOT);
         return switch (first) {
             case "add" -> parseAdd(t);
@@ -94,65 +93,81 @@ public class CommandParser {
             case "apply" -> parseApply(t);
             case "show" -> parseShow(t);
             case "persist" -> parsePersist(t);
-            case "help" -> cli -> cli.printHelp();
-            default -> throw new RuntimeException("unknown command");
+            case "help", "-h", "--help", "?" -> parseHelp(t);
+            default -> throw new CliException("unknown command '" + first + "'. Type 'help' for available commands.");
         };
     }
 
     private Command parseAdd(Tokenizer t) {
         String second = t.next();
-        if (!"entity".equalsIgnoreCase(second)) {
-            throw new RuntimeException("expected 'entity'");
+        if (second == null || !"entity".equalsIgnoreCase(second)) {
+            throw new CliException("usage: add entity {json} [vector [n1 n2 ...]]");
         }
         String rest = t.rest();
+        if (rest.isEmpty()) {
+            throw new CliException("add entity requires a JSON document");
+        }
         return cli -> cli.addEntity(rest);
     }
 
     private Command parseDelete(Tokenizer t) {
         String second = t.next();
-        if (!"entity".equalsIgnoreCase(second)) {
-            throw new RuntimeException("expected 'entity'");
+        if (second == null || !"entity".equalsIgnoreCase(second)) {
+            throw new CliException("usage: delete entity <id>");
         }
         String id = t.rest();
+        if (id == null || id.isBlank()) {
+            throw new CliException("usage: delete entity <id>");
+        }
+        String trimmedId = id.trim();
         return cli -> {
-            cli.store.delete(id);
-            for (var s : cli.sets.values()) s.remove(id);
-            System.out.println("deleted " + id);
+            cli.store.delete(trimmedId);
+            for (var s : cli.sets.values()) s.remove(trimmedId);
+            System.out.println("deleted " + trimmedId);
         };
     }
 
     private Command parseUpdate(Tokenizer t) {
         String second = t.next();
-        if (!"entities".equalsIgnoreCase(second)) {
-            throw new RuntimeException("expected 'entities'");
+        if (second == null || !"entities".equalsIgnoreCase(second)) {
+            throw new CliException("usage: update entities where <filter> set {json}");
         }
         String third = t.next();
-        if (!"where".equalsIgnoreCase(third)) {
-            throw new RuntimeException("expected 'where'");
+        if (third == null || !"where".equalsIgnoreCase(third)) {
+            throw new CliException("usage: update entities where <filter> set {json}");
         }
         List<String> filterTokens = new ArrayList<>();
         while (t.hasNext()) {
             String tok = t.next();
             if ("set".equalsIgnoreCase(tok)) {
                 String json = t.rest();
+                if (json.isEmpty()) {
+                    throw new CliException("update requires a JSON body after the set clause");
+                }
                 String filter = String.join(" ", filterTokens);
                 String line = "update entities where " + filter + " set " + json;
                 return cli -> cli.updateEntities(line);
             }
             filterTokens.add(tok);
         }
-        throw new RuntimeException("missing set clause");
+        throw new CliException("missing set clause. Usage: update entities where <filter> set {json}");
     }
 
     private Command parseGet(Tokenizer t) {
         String second = t.next();
+        if (second == null) {
+            throw new CliException("usage: get entities using filter <filter> | get field <path> from <id> | get some [N]");
+        }
         if ("entities".equalsIgnoreCase(second)) {
             String using = t.next();
             String filterTok = t.next();
             if (!"using".equalsIgnoreCase(using) || !"filter".equalsIgnoreCase(filterTok)) {
-                throw new RuntimeException("expected 'using filter'");
+                throw new CliException("usage: get entities using filter <filter>");
             }
             String expr = t.rest();
+            if (expr.isEmpty()) {
+                throw new CliException("filter expression is required");
+            }
             return cli -> {
                 QueryExpression q = cli.parser.parse(expr);
                 List<Entity> res = cli.store.query(q);
@@ -161,41 +176,47 @@ public class CommandParser {
         }
         if ("field".equalsIgnoreCase(second)) {
             String field = t.next();
+            if (field == null) {
+                throw new CliException("usage: get field <path> from <id>");
+            }
             String from = t.next();
-            if (!"from".equalsIgnoreCase(from)) {
-                throw new RuntimeException("expected 'from'");
+            if (from == null || !"from".equalsIgnoreCase(from)) {
+                throw new CliException("usage: get field <path> from <id>");
             }
             String id = t.next();
-            return cli -> {
-                Entity e = cli.store.get(id);
-                if (e == null) { System.out.println("null"); return; }
-                Object val = cli.getFieldValue(e, field);
-                System.out.println(cli.gson.toJson(val));
-            };
+            if (id == null) {
+                throw new CliException("usage: get field <path> from <id>");
+            }
+            return cli -> cli.printField(field, id);
         }
         if ("some".equalsIgnoreCase(second)) {
-            String token = t.hasNext() ? t.next() : null;
             int n = 5;
-            if (token != null && token.startsWith("[")) {
-                String inside = token.substring(1, token.length() - 1).trim();
-                if (!inside.isEmpty()) n = Integer.parseInt(inside);
+            if (t.hasNext()) {
+                String token = t.next();
+                if (token.startsWith("[") && token.endsWith("]")) {
+                    String inside = token.substring(1, token.length() - 1).trim();
+                    if (!inside.isEmpty()) {
+                        try {
+                            n = Integer.parseInt(inside);
+                        } catch (NumberFormatException e) {
+                            throw new CliException("usage: get some [N] where N is an integer", e);
+                        }
+                    }
+                } else {
+                    throw new CliException("usage: get some [N]");
+                }
             }
             final int count = n;
-            return cli -> {
-                List<Map<String,Object>> result = new ArrayList<>();
-                int i = 0;
-                for (Entity e : cli.store.findAll()) {
-                    if (i++ >= count) break;
-                    result.add(e.getFields());
-                }
-                System.out.println(cli.gson.toJson(result));
-            };
+            return cli -> cli.printSome(count);
         }
-        throw new RuntimeException("unknown get command");
+        throw new CliException("unknown get command. Type 'help get' for options.");
     }
 
     private Command parseGenerate(Tokenizer t) {
         String rest = t.rest();
+        if (rest.isEmpty()) {
+            throw new CliException("usage: generate <count>");
+        }
         return cli -> cli.generate("generate " + rest);
     }
 
@@ -203,9 +224,12 @@ public class CommandParser {
         String second = t.next();
         if ("similar".equalsIgnoreCase(second)) {
             String rest = t.rest();
+            if (rest.isEmpty()) {
+                throw new CliException("usage: find similar <id> [topN]");
+            }
             return cli -> cli.findSimilar("find similar " + rest);
         }
-        throw new RuntimeException("unknown find command");
+        throw new CliException("unknown find command. Type 'help find' for options.");
     }
 
     private Command parseCreate(Tokenizer t) {
@@ -213,12 +237,15 @@ public class CommandParser {
         if ("transform".equalsIgnoreCase(second)) {
             String third = t.next();
             if (!"function".equalsIgnoreCase(third)) {
-                throw new RuntimeException("expected 'function'");
+                throw new CliException("usage: create transform function { <expr> -> <field>; ... }");
             }
             String rest = t.rest();
+            if (rest.isEmpty()) {
+                throw new CliException("usage: create transform function { <expr> -> <field>; ... }");
+            }
             return cli -> cli.createTransformFunction("create transform function " + rest);
         }
-        throw new RuntimeException("unknown create command");
+        throw new CliException("unknown create command. Type 'help create' for options.");
     }
 
     private Command parseApply(Tokenizer t) {
@@ -226,21 +253,27 @@ public class CommandParser {
         if ("transform".equalsIgnoreCase(second)) {
             String third = t.next();
             if (!"function".equalsIgnoreCase(third)) {
-                throw new RuntimeException("expected 'function'");
+                throw new CliException("usage: apply transform function from set <src> to <dest>");
             }
             String rest = t.rest();
+            if (rest.isEmpty()) {
+                throw new CliException("usage: apply transform function from set <src> to <dest>");
+            }
             return cli -> cli.applyTransformFunction("apply transform function " + rest);
         }
-        throw new RuntimeException("unknown apply command");
+        throw new CliException("unknown apply command. Type 'help apply' for options.");
     }
 
     private Command parseShow(Tokenizer t) {
         String second = t.next();
         if ("history".equalsIgnoreCase(second)) {
             String id = t.next();
+            if (id == null) {
+                throw new CliException("usage: show history <id>");
+            }
             return cli -> System.out.println(cli.gson.toJson(cli.store.getHistory(id)));
         }
-        throw new RuntimeException("unknown show command");
+        throw new CliException("unknown show command. Type 'help show' for options.");
     }
 
     private Command parsePersist(Tokenizer t) {
@@ -248,6 +281,11 @@ public class CommandParser {
         if ("snapshot".equalsIgnoreCase(second)) {
             return CommandLine::persistSnapshot;
         }
-        throw new RuntimeException("unknown persist command");
+        throw new CliException("usage: persist snapshot");
+    }
+
+    private Command parseHelp(Tokenizer t) {
+        String rest = t.rest();
+        return cli -> cli.printHelp(rest);
     }
 }
