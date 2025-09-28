@@ -121,9 +121,15 @@ public class CommandLine {
 
     public void run() {
         Scanner sc = new Scanner(System.in);
+        System.out.println("Welcome to the Crux CLI! Type 'help' to see available commands.");
+        final String prompt = "> ";
+        System.out.print(prompt);
         while (sc.hasNextLine()) {
             String line = sc.nextLine().trim();
-            if (line.isEmpty()) continue;
+            if (line.isEmpty()) {
+                System.out.print(prompt);
+                continue;
+            }
             if ("exit".equalsIgnoreCase(line)) break;
             try {
                 handle(line);
@@ -136,6 +142,7 @@ public class CommandLine {
                 LOGGER.log(Level.SEVERE, "Failed to execute command: " + line, e);
                 System.out.println("error: " + e.getMessage());
             }
+            System.out.print(prompt);
         }
     }
 
