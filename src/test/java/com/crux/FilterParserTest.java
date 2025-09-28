@@ -88,4 +88,16 @@ public class FilterParserTest {
         assertEquals(1, res.size());
         assertEquals("1", res.get(0).getId());
     }
+
+    @Test
+    public void testHyphenatedIdentifierWithoutQuotes(@TempDir Path tempDir) {
+        DocumentStore store = new DocumentStore(tempDir);
+        String uuid = "e1395e90-4773-4089-a1bb-5362f2ff79da";
+        store.insert(new Entity(uuid, Map.of("id", uuid)));
+        FilterParser parser = new FilterParser();
+        var expr = parser.parse("id == " + uuid);
+        var res = store.query(expr);
+        assertEquals(1, res.size());
+        assertEquals(uuid, res.get(0).getId());
+    }
 }

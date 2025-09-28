@@ -30,15 +30,25 @@ public class FilterParser {
             skipWs();
             if (pos >= s.length()) return null;
             char c = s.charAt(pos);
-            if (Character.isLetter(c) || c == '_' ) {
+            if (Character.isLetter(c) || Character.isDigit(c) || c == '_' ) {
                 int start = pos;
-                while (pos < s.length() &&
-                        (Character.isLetterOrDigit(s.charAt(pos)) || s.charAt(pos)=='_' || s.charAt(pos)=='.')) pos++;
-                return s.substring(start, pos);
-            }
-            if (Character.isDigit(c)) {
-                int start = pos;
-                while (pos < s.length() && (Character.isDigit(s.charAt(pos)) || s.charAt(pos)=='.')) pos++;
+                boolean sawLetter = Character.isLetter(c) || c == '_';
+                pos++;
+                while (pos < s.length()) {
+                    char ch = s.charAt(pos);
+                    if (Character.isLetterOrDigit(ch) || ch == '_' || ch == '.') {
+                        if (Character.isLetter(ch) || ch == '_') {
+                            sawLetter = true;
+                        }
+                        pos++;
+                        continue;
+                    }
+                    if (ch == '-' && sawLetter && pos + 1 < s.length() && Character.isLetterOrDigit(s.charAt(pos + 1))) {
+                        pos++;
+                        continue;
+                    }
+                    break;
+                }
                 return s.substring(start, pos);
             }
             if (c == '"' || c=='\'') {
